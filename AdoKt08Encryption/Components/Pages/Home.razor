@@ -7,16 +7,39 @@
 
 <div class="container">
 	<h1>Encryption</h1>
+	<div class="algorithm-switch mt-3">
+		<label class="switch-label" for="use-rsa">Use RSA</label>
+		<input id="use-rsa" type="checkbox" @bind="UseRsa"/>
+		<span class="algorithm-name">Current: @(UseRsa ? "RSA" : "AES")</span>
+		@if (UseRsa)
+		{
+			<a href="https://cryptotools.net/rsagen" target="_blank">https://cryptotools.net/rsagen</a>
+		}
+	</div>
+
 	<h2 class="mt-5">Encrypt</h2>
 	<div class="encrypt-grid mt-4">
 		<label for="encrypt-input">Input:</label>
 		<input id="encrypt-input" @bind="EncryptionTextInput" @bind:event="oninput"/>
 
-		<label for="encrypt-key">Key:</label>
-		<input id="encrypt-key" @bind="EncryptionKeyInput" @bind:event="oninput"/>
+		<label for="encrypt-key">@(UseRsa ? "Public " : "")Key:</label>
+		@if (UseRsa)
+		{
+			<textarea id="encrypt-key" rows="4" @bind="EncryptionKeyInput" @bind:event="oninput"></textarea>
+		}
+		else
+		{
+			<input id="encrypt-key" @bind="EncryptionKeyInput" @bind:event="oninput"/>
+		}
 
 		<label for="encrypt-output">Encrypted:</label>
 		<span id="encrypt-output" class="output-text">@EncryptedOutput</span>
+
+		@if (HasEncryptionError)
+		{
+			<span></span>
+			<div class="error-text">@EncryptionErrorMessage</div>
+		}
 	</div>
 
 	<h2 class="mt-4">Decrypt</h2>
@@ -24,8 +47,15 @@
 		<label for="decrypt-input">Encrypted:</label>
 		<input id="decrypt-input" @bind="DecryptionTextInput" @bind:event="oninput"/>
 
-		<label for="decrypt-key">Key:</label>
-		<input id="decrypt-key" @bind="DecryptionKeyInput" @bind:event="oninput"/>
+		<label for="decrypt-key">@(UseRsa ? "Private " : "")Key:</label>
+		@if (UseRsa)
+		{
+			<textarea id="decrypt-key" rows="6" @bind="DecryptionKeyInput" @bind:event="oninput"></textarea>
+		}
+		else
+		{
+			<input id="decrypt-key" @bind="DecryptionKeyInput" @bind:event="oninput"/>
+		}
 
 		<label for="decrypt-output">Decrypted:</label>
 		<span id="decrypt-output"
@@ -63,6 +93,8 @@
 	} = "";
 
 	private string EncryptedOutput { get; set; } = "";
+	private string EncryptionErrorMessage { get; set; } = "";
+	private bool HasEncryptionError => !string.IsNullOrEmpty(EncryptionErrorMessage);
 
 	private string DecryptionTextInput
 	{
@@ -88,23 +120,47 @@
 	private string DecryptionErrorMessage { get; set; } = "";
 	private bool HasDecryptionError => !string.IsNullOrEmpty(DecryptionErrorMessage);
 
+	private bool UseRsa
+	{
+		get;
+		set
+		{
+			field = value;
+			RecalculateEncryptionState();
+			RecalculateDecryptionState();
+		}
+	}
+
 	private void RecalculateEncryptionState()
 	{
 		if (string.IsNullOrEmpty(EncryptionTextInput))
 		{
 			EncryptedOutput = "";
+			EncryptionErrorMessage = "";
 			return;
 		}
 
 		if (string.IsNullOrEmpty(EncryptionKeyInput))
 		{
 			EncryptedOutput = "";
+			EncryptionErrorMessage = "";
 			return;
 		}
 
-		var encryptedText = Encrypt(EncryptionTextInput, EncryptionKeyInput);
-
-		EncryptedOutput = encryptedText;
+		try
+		{
+			EncryptedOutput = UseRsa
+				? EncryptRsa(EncryptionTextInput, EncryptionKeyInput)
+				: EncryptAes(EncryptionTextInput, EncryptionKeyInput);
+			EncryptionErrorMessage = "";
+		}
+		catch (Exception)
+		{
+			EncryptedOutput = "";
+			EncryptionErrorMessage = UseRsa
+				? "Unable to encrypt. Enter a valid RSA public key in PEM format"
+				: "Unable to encrypt";
+		}
 	}
 
 	private void RecalculateDecryptionState()
@@ -125,13 +181,17 @@
 
 		try
 		{
-			DecryptedOutput = Decrypt(DecryptionTextInput, DecryptionKeyInput);
+			DecryptedOutput = UseRsa
+				? DecryptRsa(DecryptionTextInput, DecryptionKeyInput)
+				: DecryptAes(DecryptionTextInput, DecryptionKeyInput);
 			DecryptionErrorMessage = "";
 		}
 		catch (Exception)
 		{
 			DecryptedOutput = "";
-			DecryptionErrorMessage = "Unable to decrypt";
+			DecryptionErrorMessage = UseRsa
+				? "Unable to decrypt. Enter valid Base64 encrypted text and a valid RSA private key in PEM format"
+				: "Unable to decrypt. Check that the encrypted text and key are correct";
 		}
 	}
 
@@ -140,7 +200,7 @@
 	private const int SaltSize = 16;
 	private const int Iterations = 100_000;
 
-	private static string Encrypt(string plainText, string password)
+	private static string EncryptAes(string plainText, string password)
 	{
 		if (string.IsNullOrEmpty(plainText))
 			return "";
@@ -179,12 +239,12 @@
 		return Convert.ToBase64String(ms.ToArray());
 	}
 
-	private static string Decrypt(string cipherTextBase64, string password)
+	private static string DecryptAes(string cipherTextBase64, string password)
 	{
 		if (string.IsNullOrEmpty(cipherTextBase64))
 			return "";
 		if (string.IsNullOrEmpty(password))
-			throw new ArgumentException("Password is required.");
+			throw new ArgumentException("Password is required");
 
 		var fullCipher = Convert.FromBase64String(cipherTextBase64);
 
@@ -218,6 +278,34 @@
 		return sr.ReadToEnd();
 	}
 
+	private static string EncryptRsa(string plainText, string publicKeyPem)
+	{
+		if (string.IsNullOrEmpty(plainText))
+			return "";
+		if (string.IsNullOrWhiteSpace(publicKeyPem))
+			throw new ArgumentException("Public key is required");
+
+		using var rsa = RSA.Create();
+		rsa.ImportFromPem(publicKeyPem);
+
+		var encrypted = rsa.Encrypt(Encoding.UTF8.GetBytes(plainText), RSAEncryptionPadding.OaepSHA256);
+		return Convert.ToBase64String(encrypted);
+	}
+
+	private static string DecryptRsa(string cipherTextBase64, string privateKeyPem)
+	{
+		if (string.IsNullOrEmpty(cipherTextBase64))
+			return "";
+		if (string.IsNullOrWhiteSpace(privateKeyPem))
+			throw new ArgumentException("Private key is required");
+
+		using var rsa = RSA.Create();
+		rsa.ImportFromPem(privateKeyPem);
+
+		var decrypted = rsa.Decrypt(Convert.FromBase64String(cipherTextBase64), RSAEncryptionPadding.OaepSHA256);
+		return Encoding.UTF8.GetString(decrypted);
+	}
+
 }
 
 <!--suppress CssUnusedSymbol -->
@@ -242,5 +330,23 @@
 
 	.output-text {
 		user-select: all;
+		word-break: break-all;
+	}
+
+	.algorithm-switch {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+	}
+
+	.switch-label,
+	.algorithm-name {
+		margin: 0;
+	}
+
+	textarea {
+		width: 100%;
+		font-family: monospace;
+		font-size: 0.75rem
 	}
 </style>
