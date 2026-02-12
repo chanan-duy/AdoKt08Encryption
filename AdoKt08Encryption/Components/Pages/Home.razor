@@ -28,7 +28,13 @@
 		<input id="decrypt-key" @bind="DecryptionKeyInput" @bind:event="oninput"/>
 
 		<label for="decrypt-output">Decrypted:</label>
-		<input id="decrypt-output" disabled value="@DecryptedOutput"/>
+		<input id="decrypt-output" class="@(HasDecryptionError ? "input-error" : "")" disabled value="@DecryptedOutput"/>
+
+		@if (HasDecryptionError)
+		{
+			<span></span>
+			<div class="error-text">@DecryptionErrorMessage</div>
+		}
 	</div>
 </div>
 
@@ -77,6 +83,8 @@
 	} = "";
 
 	private string DecryptedOutput { get; set; } = "";
+	private string DecryptionErrorMessage { get; set; } = "";
+	private bool HasDecryptionError => !string.IsNullOrEmpty(DecryptionErrorMessage);
 
 	private void RecalculateEncryptionState()
 	{
@@ -102,22 +110,26 @@
 		if (string.IsNullOrEmpty(DecryptionTextInput))
 		{
 			DecryptedOutput = "";
+			DecryptionErrorMessage = "";
 			return;
 		}
 
 		if (string.IsNullOrEmpty(DecryptionKeyInput))
 		{
 			DecryptedOutput = "";
+			DecryptionErrorMessage = "";
 			return;
 		}
 
 		try
 		{
 			DecryptedOutput = Decrypt(DecryptionTextInput, DecryptionKeyInput);
+			DecryptionErrorMessage = "";
 		}
 		catch (Exception)
 		{
 			DecryptedOutput = "";
+			DecryptionErrorMessage = "Unable to decrypt";
 		}
 	}
 
@@ -131,7 +143,7 @@
 		if (string.IsNullOrEmpty(plainText))
 			return "";
 		if (string.IsNullOrEmpty(password))
-			throw new ArgumentException("Password is required.");
+			throw new ArgumentException("Password is required");
 
 		var salt = RandomNumberGenerator.GetBytes(SaltSize);
 
@@ -206,6 +218,7 @@
 
 }
 
+<!--suppress CssUnusedSymbol -->
 <style>
 	.encrypt-grid {
 		display: grid;
@@ -213,5 +226,15 @@
 		align-items: center;
 		gap: 0.5rem 1rem;
 		max-width: 48rem;
+	}
+
+	.input-error {
+		border-color: #dc3545;
+		background-color: #fff5f5;
+	}
+
+	.error-text {
+		color: #dc3545;
+		font-size: 0.9rem;
 	}
 </style>
