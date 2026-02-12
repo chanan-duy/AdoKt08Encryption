@@ -16,7 +16,7 @@
 		<input id="encrypt-key" @bind="EncryptionKeyInput" @bind:event="oninput"/>
 
 		<label for="encrypt-output">Encrypted:</label>
-		<input id="encrypt-output" disabled value="@EncryptedOutput"/>
+		<span id="encrypt-output" class="output-text">@EncryptedOutput</span>
 	</div>
 
 	<h2 class="mt-4">Decrypt</h2>
@@ -28,7 +28,9 @@
 		<input id="decrypt-key" @bind="DecryptionKeyInput" @bind:event="oninput"/>
 
 		<label for="decrypt-output">Decrypted:</label>
-		<input id="decrypt-output" class="@(HasDecryptionError ? "input-error" : "")" disabled value="@DecryptedOutput"/>
+		<span id="decrypt-output"
+		      class="output-text @(HasDecryptionError ? "input-error" : "")"
+		>@DecryptedOutput</span>
 
 		@if (HasDecryptionError)
 		{
@@ -236,5 +238,9 @@
 	.error-text {
 		color: #dc3545;
 		font-size: 0.9rem;
+	}
+
+	.output-text {
+		user-select: all;
 	}
 </style>
